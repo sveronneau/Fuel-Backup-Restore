@@ -1,0 +1,83 @@
+This is for MOS7-8.  For MOS 9, a single steps exist for backup and restore of a Fuel node with Octane (http://docs.openstack.org/developer/fuel-docs/userdocs/fuel-install-guide/upgrade/backup-fuel.html#back-up-fuel).
+
+
+Pre-Requisites for dual Fuel node
+---------------------------------
+Target Fuel must have same hardware and network interfaces
+Target Fuel must have PXE interface DOWN
+Target Fuel needs to have same IP (PXE) at time of restore.
+Target Fuel Identical User/Passwords
+Same Fuel versions (i.e. 8.0 mu-3)
+Target Fuel must have Fuel Plugins installed and SSL certs installed (if used)
+There are no deployments running
+11 GB free in /var
+You can SSH from FUEL1 -> FUEL2 and FUEL2 -> FUEL1
+
+
+Steps used to configure the backup procedure on the current Master node (Fuel1)
+-------------------------------------------------------------------------------
+***Script
+backup.sh standby_server (i.e. 67.217.83.5)
+
+***Manual process
+SSH to fuel1
+dockerctl backup backup_path (Default path is /var/backup/fuel)
+scp -r /var/backup/fuel/* 67.217.83.5:/var/backup/fuel/
+scp -r /var/www/nailgun/bootstrap/* 67.217.83.5:/var/www/nailgun/bootstrap/
+scp -r /var/www/nailgun/targetimages/* 67.217.83.5:/var/www/nailgun/bootstrap/
+
+
+Steps used to configure the restore procedure on the Standby node (Fuel2)
+-------------------------------------------------------------------------
+***Pre-Requisites
+Shutdown fuel1 and wait for it to be fully off
+SSH on fuel2 public IP (67.217.83.5)
+Change PXE IP to Fuel Master’s PXE IP in:
+> /etc/dhcp/dhclient.conf:prepend domain-name-servers PXE_IP;
+> /etc/dockerctl/config:ADMIN_IP="PXE_IP"
+> /etc/fuel/astute.yaml: "dhcp_gateway": "PXE_IP"
+> /etc/fuel/astute.yaml: "ipaddress": "PXE_IP"
+> /etc/fuel-bootstrap-cli/fuel_bootstrap_cli.yaml: - "PXE_IP"
+> /etc/hosts:PXE_IP fuel.domain.tld fuel
+> /etc/resolv.conf:nameserver PXE_IP -----> Make primary DNS
+> /etc/ssh/sshd_config:ListenAddress PXE_IP
+> /etc/sysconfig/network-scripts/ifcfg-eth0:IPADDR=PXE_IP
+> /etc/sysconfig/network-scripts/ifcfg-eth0:ONBOOT=yes
+Reboot node
+SSH on fuel2 with fuel1 private IP (10.226.0.9)
+You may get a host warning in ssh since Host and IP swaps happened
+> Clean up your .\ssh\know_hosts
+dockerctl check (wait for the prompt back)
+Login to Fuel UI
+
+***Script
+SSH on fuel2 public IP (67.217.83.5)
+/root/TOOLBOX/Backup-Restore/restore.sh
+> Copy BACKUP name you want to restore.
+dockerctl check (all services should be started)
+
+***Manual
+dockerctl restore backup_path/backup_file (Default path is /var/backup/fuel/)
+dockerctl check (all services should be started)
+
+Revert from Standby (New Master) to old Master Fuel node.
+---------------------------------------------------------
+SSH on fuel2 with fuel1 private IP (10.226.0.9)
+Change PXE IP in:
+> /etc/dhcp/dhclient.conf:prepend domain-name-servers OLD_PXE_IP;
+> /etc/dockerctl/config:ADMIN_IP="OLD_PXE_IP;"
+> /etc/fuel/astute.yaml: "dhcp_gateway": "OLD_PXE_IP;"
+> /etc/fuel/astute.yaml: "ipaddress": "OLD_PXE_IP;"
+> /etc/fuel-bootstrap-cli/fuel_bootstrap_cli.yaml: - "OLD_PXE_IP;"
+> /etc/hosts:OLD_PXE_IP; fuel.domain.tld fuel
+> /etc/resolv.conf:nameserver OLD_PXE_IP; -----> Make Secondary DNS
+> /etc/ssh/sshd_config:ListenAddress OLD_PXE_IP;
+> /etc/sysconfig/network-scripts/ifcfg-eth0:IPADDR=OLD_PXE_IP;
+> /etc/sysconfig/network-scripts/ifcfg-eth0:ONBOOT=no
+Reboot fuel2 node
+Once fuel2 is back online, start fuel1
+Ssh fuel1
+You may get a host warning in ssh since Host and IP swaps happened.
+> Clean up your .\ssh\know_hosts
+dockerctl check (wait for the prompt back)
+Login to Fuel UI
